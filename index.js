@@ -34,25 +34,51 @@ const UserSchema = new mongoose.Schema({
   password: { type: String, required: true },
 });
 
-// User Model
 const User = mongoose.model("User", UserSchema);
 
-// Sign-In Route
-app.post("/api/v1/auth/signin", async (req, res) => {
+// ✅ Signup Route
+app.post("/api/v1/auth/signup", async (req, res) => {
   await connectDB(); // Ensure DB is connected
 
   const { email, password } = req.body;
 
   try {
-    // Check if user exists
+    // Check if user already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ message: "User already exists" });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create new user
+    const newUser = new User({ email, password: hashedPassword });
+    await newUser.save();
+
+    // Generate JWT token
+    const token = jwt.sign({ userId: newUser._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
+
+    res.json({ message: "User registered successfully", token });
+  } catch (error) {
+    console.error("Signup error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// ✅ Sign-in Route
+app.post("/api/v1/auth/signin", async (req, res) => {
+  await connectDB();
+
+  const { email, password } = req.body;
+
+  try {
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ message: "Invalid email or password" });
 
-    // Validate password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ message: "Invalid email or password" });
 
-    // Generate JWT token
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
     res.json({ message: "Sign-in successful", token });
@@ -60,26 +86,6 @@ app.post("/api/v1/auth/signin", async (req, res) => {
     console.error("Sign-in error:", error);
     res.status(500).json({ message: "Server error" });
   }
-});
-
-// Sample Schema (for testing other routes)
-const ItemSchema = new mongoose.Schema({ name: String });
-const Item = mongoose.model("Item", ItemSchema);
-
-// API Routes
-app.get("/", (req, res) => res.send("API is running..."));
-
-app.get("/items", async (req, res) => {
-  await connectDB();
-  const items = await Item.find();
-  res.json(items);
-});
-
-app.post("/items", async (req, res) => {
-  await connectDB();
-  const newItem = new Item({ name: req.body.name });
-  await newItem.save();
-  res.json(newItem);
 });
 
 // Start Server
